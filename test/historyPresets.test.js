@@ -1,0 +1,30 @@
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { loadSource } = require('./sourceHarness');
+const { CallActivity } = loadSource('core/CallActivity.ts');
+const store = loadSource('tools/ToolPresetStore.ts', { process });
+test('调用历史限制条数，参数结果脱敏、不执行getter，重复完成不重复保存', () => {
+  CallActivity.clear(); let reads = 0;
+  const args = { password: 'hidden', code: 'secret code', get getter() { reads++; return 'oops'; } };
+  const activity = new CallActivity('test', args); activity.start(); activity.finish(null, { authorization: 'Bearer private', useful: 123 }); activity.finish(null, {});
+  assert.equal(CallActivity.list().length, 1); assert.equal(reads, 0);
+  const content = JSON.stringify(CallActivity.list()); assert.ok(!content.includes('hidden')); assert.ok(!content.includes('secret code')); assert.ok(!content.includes('private')); assert.match(content, /123/);
+  for (let i = 0; i < 140; i++) new CallActivity('test').finish(null, i);
+  assert.equal(CallActivity.list().length, 30); CallActivity.clear(); assert.equal(CallActivity.list().length, 0);
+});
+test('命名预设保存重读，环境变量优先，未知工具/空custom拒绝且旧配置不变', t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mcp-presets-')); t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const tools = ['create_node', 'manage_script', 'get_project_info', 'get_active_instances'].map(name => ({ name }));
+  const state = { version: 1, active: '自选', presets: [{ name: '自选', profile: 'custom', enabled: ['create_node'], disabled: [] }] };
+  store.saveToolPresets(root, state, tools);
+  assert.equal(store.readToolPresets(root, tools).active, '自选');
+  assert.equal(store.configuredTools(root, tools, {}).length, 2);
+  assert.equal(store.configuredTools(root, tools, { MCP_BRIDGE_TOOL_PROFILE: 'full' }).length, 4);
+  const file = path.join(root, 'settings/mcp-tool-presets.json'), before = fs.readFileSync(file, 'utf8');
+  assert.throws(() => store.saveToolPresets(root, { ...state, presets: [{ ...state.presets[0], enabled: ['typo'] }] }, tools));
+  assert.throws(() => store.saveToolPresets(root, { ...state, presets: [{ ...state.presets[0], enabled: [] }] }, tools));
+  assert.equal(fs.readFileSync(file, 'utf8'), before);
+});

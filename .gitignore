@@ -1,0 +1,13 @@
+node_modules/
+/.dist-stage-*/
+/.dist-previous-*/
+/sync-plan*.json
+/settings/
+/local/
+/temp/
+/docs/superpowers/
+/docs/*VALIDATION*.json
+/.claude/settings.local.json
+/.vscode/
+*.log
+.DS_Store

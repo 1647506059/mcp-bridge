@@ -1,0 +1,497 @@
+# MCP Bridge 插件
+
+这是一个为 Cocos Creator 设计的 MCP (Model Context Protocol) 桥接插件，用于连接外部 AI 工具与 Cocos Creator 编辑器，实现对场景、节点等资源的自动化操作。
+
+## 仓库与工程同步
+
+代码仓库：[1647506059/mcp-bridge](https://github.com/1647506059/mcp-bridge)。仓库同时包含源码与可直接加载的 `dist`，可作为 Creator 2.4.15 工程的 `packages/mcp-bridge` 插件使用。
+
+更新已有工程时，使用带校验和恢复备份的发布流程；端口、Host、自动启动等工程设置保留在目标工程内。
+
+```powershell
+git clone https://github.com/1647506059/mcp-bridge.git
+cd mcp-bridge
+npm ci
+node scripts/release-sync.js pack ../mcp-release
+node scripts/release-sync.js plan ../mcp-release "目标工程绝对路径" > sync-plan.json
+node scripts/release-sync.js apply sync-plan.json
+```
+
+发布目录需使用尚不存在的新目录。更新后在 Creator 扩展管理器重新加载插件；未打开的工程在下次打开时加载新版本。修改源码时先执行 `npm run build`，再生成发布包。
+
+## 适用版本
+
+此插件适用于 Cocos Creator 2.4.x 版本。由于使用了特定的编辑器 API，可能不兼容较新或较老的版本。
+
+本项目定制版 **1.7.0** 新增按 3.8 MCP 组织的独立工具、分类开放范围和 editor / scene 通用 JavaScript 执行。
+使用方式、工具映射与执行边界见 [工具能力对齐说明](docs/MCP_ALIGNMENT.md)，原有适配见 [移植说明](docs/FUNPLAY_PORT.md)。
+
+### 工具开放范围与脚本执行
+
+- 设置面板的“设置与连接 → 工具开放范围”支持八种预设、分类勾选、搜索、兼容入口筛选和操作白名单。
+- 提供 141 个编辑器工具，stdio 另保留 2 个连接工具；旧工具继续可用，HTTP 和批处理同步执行开放范围检查。
+- 使用 `execute_javascript` 指定 `context: "editor" / "scene"`，支持 `return`、`await`、`run(env)` 和函数导出。
+- 脚本响应携带结果、日志和耗时；异步超时保持执行锁，真实完成前不接受后续写入。
+
+## 功能特性
+
+- **HTTP 服务接口**: 提供标准 HTTP 接口，外部工具可以通过 MCP 协议调用 Cocos Creator 编辑器功能
+- **场景节点操作**: 获取、创建、修改场景中的节点
+- **资源管理**: 创建场景、预制体，打开场景或预制体进入编辑模式
+- **组件管理**: 添加、删除、获取节点组件
+- **脚本管理**: 创建、删除、读取、写入脚本文件
+- **批处理执行**: 批量执行多个 MCP 工具操作，提高效率
+- **资产管理**: 创建、删除、移动、获取资源信息
+- **离线预制体/场景修改**: 高速、安全的离线编辑器引擎。自动识别预制体 (`.prefab`) 与场景 (`.fire`) 物理骨架差异。支持从零无中生有创建资源骨架、深拷贝引用重算克隆、渲染层级重排序、嵌套数组引用绑定（`clickEvents[0].target`）、属性引用绑定以及物理删除 + 深度递归引用更新防崩溃机制，编辑器私有序列化字段（`_N$`）自动同步，彻底消除反序列化死锁与 Watcher 阻塞
+- **实时日志**: 提供详细的操作日志记录和展示，支持持久化写入项目内日志文件
+- **自动启动**: 支持编辑器启动时自动开启服务
+- **编辑器管理**: 获取和设置选中对象，刷新编辑器
+- **游戏对象查找**: 根据条件查找场景中的节点
+- **材质管理**: 创建和管理材质资源
+- **纹理管理**: 创建和管理纹理资源
+- **菜单项执行**: 执行 Cocos Creator 编辑器菜单项
+- **代码编辑增强**: 应用文本编辑操作到文件
+- **控制台读取**: 读取编辑器控制台输出
+- **脚本验证**: 验证脚本语法正确性
+- **全局搜索**: 在项目中搜索文本内容
+- **撤销/重做**: 管理编辑器的撤销栈
+- **特效管理**: 创建和修改粒子系统
+- **并发安全**: 指令队列串行化执行，队列上限 100 条（超限返回 HTTP 429），防止编辑器卡死
+- **超时保护**: IPC 通信和指令队列均有超时兜底机制
+- **属性保护**: 组件核心属性黑名单机制，防止 AI 篡改 `node`/`uuid` 等引用导致崩溃
+- **AI 容错**: 参数别名映射（`operation`→`action`、`save`→`update`/`write`），兼容大模型幻觉
+- **引用查找**: 查找场景中所有引用了指定节点或资源的位置，支持 Texture2D → SpriteFrame 子资源自动解析
+- **项目构建**: 一键触发 Cocos 原生 `Editor.Builder` 构建产物（内置智能防闪退兜底机制）
+- **工程信息**: 用于拉取当前活跃的编辑器级状态（版本号、根目录、当前打开的场景 UUID）
+- **Claude Code 技能**: 内置 6 个 Claude Code 技能（`/mcp-define` → `/mcp-architect` → `/mcp-execute` → `/mcp-verify`），覆盖从需求分析到验证的完整开发工作流
+
+### Claude Code 技能
+
+项目 `.claude/skills/` 目录下提供以下技能，可在 Claude Code 中直接调用：
+
+| 技能 | 用途 |
+|------|------|
+| `/mcp-rules` | 加载 MCP Bridge 开发规范（语言、架构、命名、提交） |
+| `/mcp-define` | 创建功能 Spec（深度代码调研 + 6 项交付标准） |
+| `/mcp-architect` | 创建实施 Plan（文件清单 + 分步复选框 + 代码片段） |
+| `/mcp-execute` | 逐步执行计划（强制编译验证 + 状态同步） |
+| `/mcp-refactor` | 代码审计与清理（先列问题清单，用户确认后修改） |
+| `/mcp-verify` | 功能验证（视觉审计 + 边界测试 + 回归检查） |
+
+完整工作流：`/mcp-define` → `/mcp-architect` → `/mcp-execute` → `/mcp-verify`
+
+## 安装与使用
+
+### 安装
+
+将此插件复制到 Cocos Creator 项目的 `packages` 目录下即可。
+
+### 构建
+
+```bash
+npm install
+npm run build
+```
+
+> **注意**: 构建使用 esbuild 并指定 `--target=es2018` 以确保兼容 Cocos Creator 2.4.x 内置的 Electron 9.x 运行时。
+
+### 启动
+
+1. 打开 Cocos Creator 编辑器
+2. 在菜单栏选择 `MCP 桥接器/开启MCP设置面板` 打开设置面板
+3. 在面板中点击 "启动" 按钮启动服务
+4. 服务默认运行在端口 8200 上
+
+顶部 `MCP 桥接器` 菜单也提供 `工具链` 与 `设置` 子菜单：工具链包含服务控制、端点/CLI、宿主平台配置和调用/日志操作；设置包含端口、Host、自动启动、工具预设与截图参数。操作项复用现有按钮，输入项会打开面板对应分页并定位控件；首次打开会等待读取配置后执行。
+
+### 配置选项
+
+- **端口**: 可以自定义 HTTP 服务监听的端口，默认为 8200
+- **自动启动**: 可以设置编辑器启动时自动开启服务
+- **多实例支持**: 如果默认端口 (8200) 被占用或处于系统排除范围，插件会自动尝试端口+1 (如 8201)，直到找到可用端口。
+- **端口绑定**: 服务绑定在 `127.0.0.1`（本机回环），避免与 Hyper-V/WSL 端口保留机制冲突。
+- **项目激活**: 未通过 `set_active_instance` 激活项目前，仅开放 `get_active_instances` 和 `set_active_instance` 两个基础工具，防止未授权访问。
+- **配置隔离**: 插件配置（是否自动启动、上次使用的端口）现已存储在项目目录 (`settings/mcp-bridge.json`) 中，不同项目的配置互不干扰。
+
+## 连接 AI 编辑器
+
+### 自动化一键配置（推荐）
+
+当前版本内置支持以下 AI 客户端的自动化配置探测与写入：
+- **Claude Desktop** (全局)
+- **Cline** (VSCode 工作区/全局)
+- **Roo Code** (VSCode 工作区/全局)
+- **Trae** (全局)
+
+1. 在 Cocos Creator 菜单栏选择 `MCP 桥接器/开启MCP设置面板` 打开设置面板。
+2. 切换到顶部的 **「MCP 配置」** 选项卡。
+3. 若系统扫描成功，从下拉菜单选定对应的宿主 AI 客户端。
+4. 点击 **「一键配置当前平台」**。插件将安全地完成 MCP Server 定义注册信息的全自动写入。重启对应 AI 即可无缝拉起。
+
+### 手动在 AI 编辑器中配置
+
+如果你的 AI 编辑器提供的是 Type: command 或 Stdio 选项：
+
+```
+Command: node
+Args: [插件安装路径]/dist/mcp-proxy.js
+```
+
+### 或者添加 JSON 配置：
+
+```json
+{
+    "mcpServers": {
+        "mcp-bridge": {
+            "command": "node",
+            "args": ["[插件安装路径]/dist/mcp-proxy.js"]
+        }
+    }
+}
+```
+
+注意：请将上述配置中的路径替换为你自己项目中 `dist/mcp-proxy.js` 文件的实际绝对路径。
+
+## 项目架构
+
+```
+mcp-bridge/
+├── src/                          # TypeScript 源码
+│   ├── main.ts                   # 插件主入口 (load/unload, IPC 注册)
+│   ├── scene-script.ts           # 场景脚本 (渲染进程, 操作 cc.* 引擎 API)
+│   ├── mcp-proxy.ts              # MCP stdio 代理 (AI 客户端 ↔ HTTP 桥接)
+│   ├── IpcManager.ts             # IPC 消息管理器
+│   ├── McpConfigurator.ts        # AI 客户端配置自动注入
+│   ├── core/                     # 核心基础设施
+│   │   ├── Logger.ts             # 集中式日志 (缓冲 + 面板同步 + 文件落盘)
+│   │   ├── CommandQueue.ts       # 指令队列 (串行化 + 超时保护)
+│   │   ├── HttpServer.ts         # HTTP 服务器生命周期管理
+│   │   ├── McpRouter.ts          # HTTP 请求路由分发
+│   │   └── McpWrappers.ts        # 独立资源工具 (search/undo/sha/animation)
+│   ├── tools/                    # MCP 工具层
+│   │   ├── ToolRegistry.ts       # 工具定义注册表 (name/description/schema)
+│   │   ├── ToolDispatcher.ts     # 工具调度中心 (handleMcpCall → 场景脚本)
+│   │   ├── ToolCapabilities.ts   # 独立入口映射、分类与能力元数据
+│   │   ├── ToolProfiles.ts       # 开放范围和操作白名单
+│   │   ├── ToolPresetStore.ts    # 工程预设保存与动态读取
+│   │   ├── ScriptExecution.ts    # 通用 JavaScript 执行及日志返回
+│   │   ├── SceneCapabilities.ts  # 场景检查、事件和 director 能力
+│   │   ├── EditorCapabilities.ts # 工具目录、窗口与资源查询
+│   │   ├── UndoGroups.ts         # 跨请求撤销组合并与取消回退
+│   │   └── ProjectFiles.ts       # 工程内文本文件操作
+│   ├── utils/                    # 通用工具
+│   │   └── AssetPatcher.ts       # 原子化资源创建 + Prefab 修补工具
+│   └── panel/                    # 设置面板
+│       └── index.ts              # 面板交互逻辑
+├── panel/
+│   └── index.html                # 面板 HTML 模板
+├── dist/                         # 编译输出 (esbuild bundle)
+│   ├── main.js                   # 主进程入口
+│   ├── scene-script.js           # 场景脚本
+│   ├── panel/index.js            # 面板脚本
+│   └── mcp-proxy.js              # MCP 代理
+├── package.json                  # 插件清单 (Cocos Creator 2.x 格式)
+└── tsconfig.json                 # TypeScript 编译配置
+```
+
+### 进程架构
+
+```
+主进程 (main.ts)                    渲染进程 (scene-script.ts)
+       │                                      │
+       ├─ 1. 接收 HTTP 请求                    │
+       │      HttpServer → McpRouter           │
+       ├─ 2. 路由到工具分发器                    │
+       │      ToolDispatcher.handleMcpCall()   │
+       ├─ 3. 调用场景脚本 ──────────────────────┤
+       │      CommandQueue → callSceneScript   │
+       │                                       ├─ 4. 操作节点/组件
+       │                                       │      cc.engine / cc.director
+       │                                       ├─ 5. 通知场景变脏
+       │                                       │      Editor.Ipc → scene:dirty
+       └─ 6. 返回 JSON 结果 ◀──────────────────┘
+```
+
+## API 接口
+
+服务提供以下 MCP 工具接口：
+
+### 1. get_selected_node
+
+- **描述**: 获取当前编辑器中选中的节点 ID
+- **参数**: 无
+
+### 2. set_node_name
+
+- **描述**: 修改指定节点的名称
+- **参数**:
+    - `id`: 节点的 UUID
+    - `newName`: 新的节点名称
+
+### 3. save_scene / save_prefab / close_prefab
+
+- **描述**: 场景和预制体保存/关闭操作
+- **参数**: 无（`save_scene` 保存场景，`save_prefab` 保存当前预制体，`close_prefab` 退出预制体编辑模式）
+
+### 4. get_scene_hierarchy
+
+- **描述**: 获取当前场景的完整节点树结构。如果要查询具体组件属性请配合 manage_components。
+- **参数**:
+    - `nodeId`: 指定的根节点 UUID（可选）
+    - `depth`: 遍历深度限制，默认为 2（可选）
+    - `includeDetails`: 是否包含坐标、缩放等详情，默认为 false（可选）
+
+### 5. update_node_transform
+
+- **描述**: 修改节点的坐标、缩放、颜色或显隐状态
+- **参数**: `id`(必需), `x`, `y`, `width`, `height`, `scaleX`, `scaleY`, `rotation`, `color`, `opacity`, `active`, `anchorX`, `anchorY`, `skewX`, `skewY`
+
+### 6. open_scene / open_prefab
+
+- **描述**: 打开场景/预制体进入编辑模式（异步操作，需等待几秒）
+- **参数**: `url` — 资源路径（如 `db://assets/NewScene.fire`）
+
+### 7. create_node
+
+- **描述**: 在当前场景中创建新节点
+- **参数**: `name`(必需), `parentId`, `type`(empty/sprite/label/button), `layout`(center/top/bottom/full 等)
+
+### 8. manage_components
+
+- **描述**: 管理节点组件（增删改查）
+- **参数**: `nodeId`(必需), `action`(add/remove/update/get), `componentType`, `componentId`, `properties`
+
+### 9. manage_script
+
+- **描述**: 管理脚本文件
+- **参数**: `action`(create/delete/read/write), `path`, `content`, `name`
+
+### 10. batch_execute
+
+- **描述**: 批处理执行多个操作
+- **参数**: `operations` — 操作列表（含 `tool` 和 `params`）
+
+### 11. manage_asset
+
+- **描述**: 管理资源（创建/删除/移动/查询信息）
+- **参数**: `action`, `path`, `targetPath`, `content`
+
+### 12. scene_management / prefab_management
+
+- **描述**: 场景和预制体管理
+- **参数**: `action`(create/delete/duplicate/get_info), `path`, `nodeId`, `parentId`
+
+### 13. manage_editor
+
+- **描述**: 管理编辑器（获取/设置选中, 刷新编辑器）
+- **参数**: `action`(get_selection/set_selection/refresh_editor), `target`, `properties`
+- **注意**: `refresh_editor` 仅接受单文件路径（带后缀名），目录路径和 `db://assets` 全局路径已被代码层硬性拒绝
+
+### 14. find_gameobjects
+
+- **描述**: 按条件搜索场景中的游戏对象
+- **参数**: `conditions`(name/component/active), `recursive`
+
+### 15. manage_material / manage_texture / manage_shader
+
+- **描述**: 管理材质、纹理、着色器资源
+- **参数**: `action`, `path`, `properties`/`content`
+
+### 16. execute_menu_item
+
+- **描述**: 执行菜单项（支持 `delete-node:UUID` 直接删除节点）
+- **参数**: `menuPath`
+
+### 17. apply_text_edits
+
+- **描述**: 对文件应用文本编辑（insert/delete/replace）
+- **参数**: `filePath`, `edits`
+
+### 18. read_console
+
+- **描述**: 读取插件控制台日志
+- **参数**: `limit`, `type`
+
+### 19. validate_script
+
+- **描述**: 验证脚本语法正确性
+- **参数**: `filePath`
+
+### 20. search_project
+
+- **描述**: 搜索项目文件（支持正则、文件名、目录名）
+- **参数**: `query`, `useRegex`, `path`（默认为 `db://assets`，传入 `db://` 会自动纠正为 `db://assets`）, `matchType`, `extensions`, `includeSubpackages`
+
+### 21. manage_undo
+
+- **描述**: 撤销/重做管理
+- **参数**: `action`(undo/redo/begin_group/end_group/cancel_group), `description`, `id`
+
+### 22. manage_vfx
+
+- **描述**: 特效（粒子系统）管理
+- **参数**: `action`(create/update/get_info), `nodeId`, `name`, `parentId`, `properties`
+
+### 23. manage_animation
+
+- **描述**: 管理节点动画组件
+- **参数**: `action`(get_list/get_info/play/stop/pause/resume), `nodeId`, `clipName`
+
+### 24. get_sha
+
+- **描述**: 获取指定文件的 SHA-256 哈希值
+- **参数**: `path`
+
+### 25. find_references
+
+- **描述**: 查找场景中引用了指定节点或资源的所有位置
+- **参数**: `targetId`, `targetType`(node/asset/auto)
+
+### 26. create_scene / create_prefab
+
+- **描述**: 创建场景文件 / 将场景节点保存为预制体
+- **参数**: `sceneName` / `nodeId` + `prefabName`
+
+### 27. build_project
+
+- **描述**: 触发编辑器内置打包构建管线（具备空场景容错、剔除引擎模块白名单同步保护）
+- **参数**: `platform` (例如 web-mobile), `debug`
+
+### 28. get_project_info
+
+- **描述**: 获取当前激活的编辑器环境数据
+- **参数**: 无（返回 `path`, `version`, `openScene` 状态）
+
+### 29. get_active_instances
+
+- **描述**: 扫描并获取当前本地所有正在运行的 `mcp-bridge` 实例（端口范围 8200–8210），返回各自对应的端口及项目根路径。
+- **参数**: 无
+
+### 30. set_active_instance
+
+- **描述**: 激活并绑定目标 Cocos Creator 项目实例。调用后方可获取全部工具（含离线编辑和编辑器工具），未激活时仅返回基础管理工具。
+- **参数**: `port` (目标端口号)
+
+### 31. modify_prefab_offline
+
+- **描述**: 离线修改预制体工具。无需在编辑器中打开窗口，直接在物理文件层面解析并修改预制体，执行系列声明式操作并安全回写物理磁盘。
+- **参数**:
+    - `prefabUrl` (必需): 预制体资源的 db:// 路径，如 `db://assets/prefabs/MyPrefab.prefab`。对于不存在的文件，若首个操作为 add_node 且路径为空，则触发自动从零新建骨架。
+    - `operations` (必需): 操作项列表。支持的原子操作 `action` 包括：
+        - `update_property`: 更新节点/组件属性（properties 传入属性键值对。支持数组索引语法如 `clickEvents[0].handler`。组件属性自动同步 `_N$` 私有序列化字段）
+        - `add_component`: 挂载新组件（componentType 指定类名。组件属性自动同步 `_N$` 字段）
+        - `remove_component`: 卸载组件（自动物理 splice 删除并递归更新引用）
+        - `add_node`: 在 targetPath 下新增子节点（自动补齐 6 大原生属性）
+        - `remove_node`: 物理删除节点树（物理 splice 并深度递归重映射所有 __id__ 指向 null，防止越界卡死）
+        - `clone_node`: 深拷贝节点子树（使用 indexMap 重排拷贝子树内部所有相对 __id__ 引用）
+        - `reorder_child`: 调整子节点渲染顺序（childOrder 传入名称数组，安全合并遗漏项）
+        - `set_reference`: 绑定组件属性引用（通过 referenceValue 属性关联外部 UUID 或内部节点/组件索引。支持数组索引语法如 `clickEvents[0].target`，可通过 `elementType: "cc.ClickEvent"` 自动创建嵌套数组元素）
+
+### 32. modify_scene_offline
+
+- **描述**: 离线修改场景文件工具。直接在物理文件层面解析并修改场景 (.fire) 资源，并在操作后物理解析完毕延迟刷新 AssetDB。支持与 `modify_prefab_offline` 相同的 8 大原子操作。
+- **参数**:
+    - `sceneUrl` (必需): 场景资源的 db:// 路径，如 `db://assets/scene/FormalScene.fire`。对于不存在的文件，若第一个动作为 add_node 且 targetPath 为空，则自动初始化极简空场景骨架。
+    - `operations` (必需): 与 `modify_prefab_offline` 共享完全一致的操作结构。
+
+## 离线编辑器引擎原理（预制体与场景）
+
+Cocos Creator 2.x 的预制体（Prefab）物理文件是平铺的 JSON 对象数组（以 `cc.Prefab` 为首元素，依赖 `{"__id__": index}` 相互关联引用）。由于这种特殊的平铺拓扑，直接进行增删非常容易导致索引错乱或空指针崩溃。为了确保离线原子修改的 100% 健壮性，本插件设计并实现了以下核心原理：
+
+### 1. 深度递归引用更新（`remapAllIdRefs` 算法）
+当删除节点或卸载组件时，若使用 `null` 逻辑占位，会导致引擎反序列化时 constructor 崩溃（Cocos 致命雷区）。因此，必须使用物理 `splice` 真正删除平铺项并缩短数组。
+为了防止物理删除后所有大于被删索引的 `__id__` 引用发生错乱，本引擎引入了深度递归遍历重算算法。它会扫描整个 JSON 对象的所有字段，不管是普通的扁平属性，还是深度嵌套在数组或对象中的属性（如 `clickEvents` 事件的 `target` 目标），只要匹配到 `{ __id__: oldId }`：
+* 若 `oldId` 属于被物理删除的范围，则优雅将其重置为 `null`，并对组件或子节点引用数组（`_children`/`_components`）自动执行 `filter(item => item !== null)` 过滤。
+* 若 `oldId` 大于删除项索引，则自动减去当前在其前方的被删项目数 `k`（`newId = oldId - k`），使得引用关系在新物理数组中完美复位。
+
+### 2. 防移位子树克隆算法（`clone_node`）
+在执行克隆操作时，引擎会递归提取源节点子树包含的所有对象（子节点、绑定组件及关联的 `cc.PrefabInfo`），深拷贝并追加在平铺 JSON 尾部。
+为了保证克隆子树的独立性，引擎在内存中建立 `Map<oldIndex, newIndex>` 的临时映射表，遍历克隆出的新对象：
+* 若发现其 `__id__` 引用指向了原本子树内部的旧索引，则利用 Map 重算并替换为对应的克隆后新索引，以保证引用相对关系的正确。
+* 若发现其引用指向了子树外部的公共节点，则保留原样，防止误改。
+
+### 3. 根节点前缀过滤与路径容错
+离线预制体在不同工具中的定位前缀可能不尽相同。本引擎在 `findNodeByPath` 方法中实现了智能裁剪：若寻址路径段的第一级等于当前预制体根节点的名字，且根节点下并没有与其同名的子节点，则自动剥离前缀再向下寻址。这完美兼容了“带着根名字前缀”和“直接指代根”的寻址请求。
+
+### 4. 离线“无中生有”自动新建
+若被修改的预制体尚不存在，分发器会自动创建物理目录，并写入一套包含了所有 2.4.x 必需原生属性（如 `_eulerAngles`、`_skewX`/`_skewY`、`_is3DNode`、`groupIndex` 等）的极简空骨架 JSON 格式文件。
+为了规避新建时产生的多层套娃结构，写入骨架后分发器会自动 `shift()` 剔除首个用于创建根节点的冗余 `add_node` 操作，直接使后续组件和属性操作无缝定位到骨架自带的根节点上。
+
+### 5. 非阻塞异步重载机制（防 Watcher 死锁）
+离线预制体落盘时，物理文件落盘在 1~3 毫秒内即可完成。为杜绝 Cocos 编辑器文件 Watcher 与主线程争抢文件锁产生的微秒级竞态死锁，主进程在物理写入成功后会立即回调响应释放队列，而对 `Editor.assetdb.refresh` 则采用 `setTimeout` 延迟 200 毫秒异步唤醒刷新。这彻底规避了 MCP 队列因锁阻塞导致 60 秒超时和编辑器“检查文件更新”转圈卡死的故障。
+
+### 6. 自定义脚本 UUID 自动压缩
+Cocos Creator 序列化自定义脚本组件时，物理预制体的 `__type__` 字段需要填入 23 位的压缩版 UUID（通过 r=5 算法转换，如 `1f9d8d0d-d79c-45ff-8ed7-e0f1e651fe26` 压缩为 `1f9d80N15xF/47X4PHmUf4m`）。
+本引擎实现了纯离线的 Hex/Base64 UUID 互转压缩算法，在添加、移除和检索自定义组件时在后台自动执行压缩。这彻底解决了离线直接挂载原始 36 位 UUID 被编辑器报错识别为 `cc.MissingScript` 以及连线属性随之失效的问题。
+
+### 7. 复杂组件属性（如 cc.ClickEvent）平铺提升（Lift）
+Cocos 2.x 的 `cc.ClickEvent` 继承自 `cc.Object`。引擎反序列化规范限制其**不能直接内联**在组件的属性结构中，必须平铺作为平铺数组的独立项，并通过 `{ "__id__": index }` 被引用，且其 `component` 属性在物理文件中应当为空 `""`，并且应当设置特殊的 `_componentId` 为对应脚本的压缩版 UUID。
+为此，本引擎实现了属性自动提升平铺（Lift）机制。当写入 `clickEvents` 等事件属性时，自动识别并创建独立平铺的事件节点，递归计算相对依赖引用并执行引用的重算 realign，完美契合了引擎的反序列化绑定规范。
+
+### 9. 嵌套数组引用绑定与元素自动创建（`clickEvents[0].target`）
+	本引擎现在支持通过数组索引语法直接访问和修改组件内嵌套数组的属性。当 `set_reference` 或 `update_property` 的 `propertyName` 中包含 `clickEvents[0].target` 这样的路径时，引擎会：
+	1. **解析路径**: 自动识别数组字段名 `clickEvents`、索引 `0`、子属性 `target`。
+	2. **访问数组**: 从组件的属性中获取数组（兼容 `_N$` 前缀序列化版本）。
+	3. **自动创建**: 如果数组或指定索引的元素不存在，利用 `elementType` 参数自动创建（如 `cc.ClickEvent`），初始化默认值并填充平铺数组。
+	4. **解引用**: 自动处理 Cocos 平铺格式的 `{ __id__: N }` 到实际对象的转换。
+	这使得绑定按钮点击事件、设置自定义脚本的数组引用等场景完全可以在离线编辑中完成，无需后处理脚本手动计算索引映射。
+
+### 10. 组件属性 `_N$` 私有序列化字段自动同步
+	Cocos Creator 2.x 引擎在序列化某些组件属性时，内部同时使用公有字段和以 `_N$` 开头的私有序列化字段。编辑器检测到脚本更新并触发重构时，会依赖 `_N$` 字段读取反序列化数据。若缺失，编辑器会重置为默认值，覆盖离线写入的数据。
+	本引擎在 `update_property`、`add_component`、`set_reference` 三处操作中，对每个写入的组件属性 `K`（不以 `_` 或 `_N$` 开头），**自动同步写入 `_N$K`**。确保编辑器在任何触发性重绘后均能正确读取离线写入数据，彻底终结反吞问题。
+
+### 11. MCP 代理内嵌离线引擎（需激活项目）
+	`mcp-proxy.js` 已内嵌 OfflinePrefabEditor 编译包。当 AI 客户端（如 Antigravity、Claude Code）通过 stdio 连接代理时，需先通过 `set_active_instance` 激活项目后方可获取离线编辑工具。
+	- **Cocos 在线模式**: 代理优先将调用转发至 Cocos Creator 插件 HTTP 服务，获得完整的 AssetDB 刷新和编辑器同步能力。
+	- **纯代理离线模式**: 已激活但编辑器未运行时，代理直接在本进程内执行离线修改。项目路径通过扫描存活实例或 `MCP_BRIDGE_PROJECT_PATH` 环境变量获取。
+
+### 12. 场景与预制体的骨架泛化与差异处理
+本引擎同时支持预制体 (`.prefab`) 与场景 (`.fire`) 的物理修改。通过在 `findNodeByPath` 中自动辨识首位的 `cc.Prefab` 或 `cc.SceneAsset` 类型，动态设置根定位起点（预制体为 `data.__id__`，场景为虚拟根 `scene.__id__`）。此外，在新增节点时，引擎会自动过滤掉场景模式下的 `cc.PrefabInfo` 数据块创建，保障场景文件结构的纯净，完美向后兼容。
+
+## 开发指南
+
+### 添加新 MCP 工具
+
+1. 在 `src/tools/ToolRegistry.ts` 中添加工具定义（name, description, inputSchema）
+2. 在 `src/tools/ToolDispatcher.ts` 中添加对应的处理方法
+3. 如需操作场景节点，在 `src/scene-script.ts` 中添加对应的场景脚本处理器
+
+### 构建与调试
+
+```bash
+# 类型检查（不生成文件）
+npx tsc --noEmit
+
+# 完整构建
+npm run build
+
+# 在 Cocos Creator 中重新加载插件
+# 菜单 → 开发者 → 重新加载
+```
+
+### 日志管理
+
+插件通过 `Logger` 服务统一记录所有操作日志：
+- 面板实时显示（通过 IPC `sendToPanel`）
+- 持久化写入 `settings/mcp-bridge.log`（自动轮转，上限 2MB）
+- 内存缓冲区上限 2000 条，超限自动截断
+
+## AI 操作安全守则
+
+1. **确定性优先**：任何对节点、组件、属性的操作，都必须建立在"主体已确认存在"的基础上。
+2. **校验流程**：操作前必须使用 `get_scene_hierarchy` / `manage_components(get)` 确认目标存在。
+3. **禁止假设**：禁止盲目尝试对不存在的对象或属性进行修改。
+
+## 更新日志
+
+请查阅 [UPDATE_LOG.md](./UPDATE_LOG.md) 了解详细的版本更新历史。
+
+## 联系方式
+
+如有问题或建议，请联系：firekula@foxmail.com
+
+## 许可证
+
+GNU AFFERO GENERAL PUBLIC LICENSE Version 3, 19 November 2007
+
+完整的许可证文本可在项目根目录的 LICENSE 文件中找到。

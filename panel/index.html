@@ -1,0 +1,105 @@
+<div class="mcp-container">
+	<div class="tabs">
+		<button id="tabMain" class="tab-button active">概览</button>
+		<button id="tabConfig" class="tab-button">设置与连接</button>
+	</div>
+
+	<div id="panelMain" class="tab-content active dashboard">
+        <section id="serverSettings">
+            <h4>MCP SERVER <span id="serverDot" class="status-dot"></span><span id="serverState" class="state-label">读取中</span></h4>
+            <div class="endpoint" id="endpoint" title="本机 HTTP 桥接端点">—</div>
+            <div class="metrics"><span id="toolCount">Tools — / — res</span><span id="requestCount">工具调用 —</span></div>
+            <div class="button-grid three"><button id="btnCopyEndpoint">复制端点</button><button id="btnCopyCli">复制 CLI 命令</button><button id="btnRestart">重启服务</button></div>
+            <div class="server-controls"><span>端口</span><ui-input id="portInput" style="width:68px"></ui-input><button id="btnToggle" class="green">启动</button><ui-checkbox id="autoStartCheck">自动启动</ui-checkbox><span id="activePortDisplay" style="display:none"></span></div>
+            <div class="form-row"><span>Host</span><input id="hostInput" value="127.0.0.1" aria-label="监听 Host"><button id="btnApplyHost">应用 Host</button></div>
+            <div id="hostNotice" class="notice" role="status"></div>
+        </section>
+        <section>
+            <h4>编辑器 <span class="status-dot online"></span><span id="engineVersion" class="state-label">—</span></h4>
+            <dl class="info-list">
+                <div><dt>工程</dt><dd id="projectPath">—</dd></div>
+                <div><dt>分支</dt><dd id="gitBranch">—</dd></div>
+                <div><dt>HEAD</dt><dd id="gitHead">—</dd></div>
+                <div><dt>编辑器 PID</dt><dd id="editorPid">—</dd></div>
+                <div><dt>MCP 版本 / 构建</dt><dd id="buildInfo">—</dd></div>
+                <div><dt>指令队列</dt><dd id="queueInfo">—</dd></div>
+                <div><dt>状态刷新</dt><dd id="infoUpdated">—</dd></div>
+            </dl>
+        </section>
+        <section>
+            <h4>快捷操作</h4>
+            <div class="button-grid"><button id="btnRefreshStatus">刷新状态</button><button id="btnOpenProject">打开工程目录</button></div>
+            <div id="dashboardNotice" class="notice" role="status" aria-live="polite"></div>
+        </section>
+        <details class="log-section" open>
+            <summary>最近调用 <button id="btnClearCalls" class="transparent">清空记录</button></summary>
+            <div id="callHistory" class="call-history">暂无调用</div>
+        </details>
+        <details class="log-section">
+            <summary>最近日志 <span class="log-actions"><button id="btnClear" class="transparent">清空</button><button id="btnCopy" class="transparent">复制</button></span></summary>
+            <div id="logConsole" class="log-view"></div>
+        </details>
+    </div>
+
+	<div id="panelConfig" class="tab-content" style="padding: 12px; color: #ccc; overflow-y: auto;">
+		<div class="settings-container">
+            <div id="toolExposureSettings" class="settings-card tool-exposure-card">
+                <h4>工具开放范围</h4>
+                <p class="tip-text">按分类或单个工具开放能力；组合工具可继续限制操作。工程预设同时约束 HTTP 与 stdio 调用，连接工具始终保留。</p>
+                <div class="form-row"><select id="toolPresetSelect"></select><button id="btnLoadPresets">重新读取</button></div>
+                <div class="form-row"><input id="toolPresetName" placeholder="预设名称（新名称另存）" maxlength="48"><select id="toolProfileMode"></select></div>
+                <div class="form-row"><input id="toolSearch" type="search" placeholder="搜索工具名称、说明或分类" aria-label="搜索工具"><span id="toolExposureCount"></span></div>
+                <div class="tool-toolbar"><button id="btnSelectAllTools">全部选择</button><button id="btnClearTools">清除</button><button id="btnResetTools">使用预设默认</button><label><input id="hideCompatTools" type="checkbox">隐藏兼容入口</label></div>
+                <div id="toolChecklist" class="tool-checklist"></div>
+                <div class="button-grid"><button id="btnSavePreset">保存并启用</button><button id="btnExportPresets">复制全部预设</button><button id="btnImportPresets">从剪贴板导入</button></div>
+                <div id="toolPresetNotice" class="notice" role="status"></div>
+            </div>
+			<!-- 卡片 1: 自动化工具链配置 -->
+			<div id="toolchainSettings" class="settings-card">
+				<h4>⚡ 自动化工具链配置</h4>
+				
+				<div class="form-item">
+					<label>宿主平台:</label>
+					<div class="form-row">
+						<select id="mcpClientSelect"></select>
+						<button id="btnRefreshMcp" class="transparent">↻ 刷新</button>
+					</div>
+				</div>
+
+				<div id="mcpConfigStatus" class="status-box">等待扫描...</div>
+
+				<div class="action-group">
+					<button id="btnInjectMcp" class="green">一键配置当前选择平台</button>
+					<button id="btnInjectAll">尝试向所有平台分发配置</button>
+				</div>
+			</div>
+
+			<!-- 卡片 2: 性能与截图优化 -->
+			<div id="screenshotSettings" class="settings-card">
+				<h4>⚙️ 截图设置</h4>
+				
+				<div class="form-item">
+					<label>截屏最大宽度 (px):</label>
+					<div class="form-row">
+						<ui-input id="screenshotWidthInput" style="width: 80px"></ui-input>
+						<span class="tip-text">(DPI缩放上限，推荐1024-1920)</span>
+					</div>
+				</div>
+
+				<div class="form-item">
+					<label>截屏防抖节流 (ms):</label>
+					<div class="form-row">
+						<ui-input id="screenshotThrottleInput" style="width: 80px"></ui-input>
+						<span class="tip-text">(限制截图频次，推荐1000-3000)</span>
+					</div>
+				</div>
+
+				<div class="action-group">
+					<button id="btnSaveScreenshotSettings" class="green">保存性能配置</button>
+				</div>
+			</div>
+		</div>
+	</div>
+
+
+</div>

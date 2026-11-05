@@ -1,0 +1,293 @@
+{
+	"name": "mcp-bridge",
+	"version": "1.7.0",
+	"description": "Cocos Creator MCP 桥接插件",
+	"author": "Firekula",
+	"main": "dist/main.js",
+	"scene-script": "dist/scene-script.js",
+	"scripts": {
+		"build": "tsc --noEmit && node scripts/build.js",
+		"test": "npm run test:source && npm run test:enhancements && npm run build && node --test test/proxyDiscovery.test.js test/proxyTransport.test.js",
+		"test:alignment": "node --test test/scriptExecution.test.js test/toolCapabilities.test.js test/sceneCapabilities.test.js",
+		"test:enhancements": "node --test test/diagnosticsReadiness.test.js test/uiValidation.test.js test/historyPresets.test.js test/releaseSync.test.js test/scriptExecution.test.js test/toolCapabilities.test.js test/sceneCapabilities.test.js",
+		"release:pack": "node scripts/release-sync.js pack",
+		"test:source": "tsc --noEmit && node --test test/projectContext.test.js test/projectHttp.test.js test/clientConfigProtection.test.js test/editorInput.test.js test/commandQueue.test.js test/editorScene.test.js test/editorScreenshot.test.js test/proxyRouting.test.js test/createPrefab.test.js test/componentProperties.test.js test/textEdits.test.js test/mcpRouter.test.js test/batchOperations.test.js test/componentQuery.test.js test/runtimeDiagnostics.test.js test/httpTransport.test.js test/editorWrites.test.js test/offlineTransactions.test.js test/logging.test.js test/projectSearch.test.js test/sceneReliability.test.js test/reliability.test.js test/uiOptimizations.test.js test/profileConfig.test.js test/panelStatus.test.js"
+	},
+	"main-menu": {
+		"MCP 桥接器/开启MCP设置面板": {
+			"message": "mcp-bridge:open-test-panel"
+		},
+		"MCP 桥接器/工具链/启动或停止服务": {
+			"message": "mcp-bridge:menu-action",
+			"params": [
+				"server"
+			]
+		},
+		"MCP 桥接器/工具链/重启服务": {
+			"message": "mcp-bridge:menu-action",
+			"params": [
+				"restart"
+			]
+		},
+		"MCP 桥接器/工具链/复制 HTTP 端点": {
+			"message": "mcp-bridge:menu-action",
+			"params": [
+				"copy-endpoint"
+			]
+		},
+		"MCP 桥接器/工具链/复制 CLI 命令": {
+			"message": "mcp-bridge:menu-action",
+			"params": [
+				"copy-cli"
+			]
+		},
+		"MCP 桥接器/工具链/刷新状态": {
+			"message": "mcp-bridge:menu-action",
+			"params": [
+				"refresh-status"
+			]
+		},
+		"MCP 桥接器/工具链/打开工程目录": {
+			"message": "mcp-bridge:menu-action",
+			"params": [
+				"open-project"
+			]
+		},
+		"MCP 桥接器/工具链/自动化工具链配置": {
+			"message": "mcp-bridge:menu-action",
+			"params": [
+				"toolchain"
+			]
+		},
+		"MCP 桥接器/工具链/选择宿主平台": {
+			"message": "mcp-bridge:menu-action",
+			"params": [
+				"client"
+			]
+		},
+		"MCP 桥接器/工具链/刷新宿主平台": {
+			"message": "mcp-bridge:menu-action",
+			"params": [
+				"scan-clients"
+			]
+		},
+		"MCP 桥接器/工具链/一键配置当前平台": {
+			"message": "mcp-bridge:menu-action",
+			"params": [
+				"configure-client"
+			]
+		},
+		"MCP 桥接器/工具链/向所有平台分发配置": {
+			"message": "mcp-bridge:menu-action",
+			"params": [
+				"configure-all"
+			]
+		},
+		"MCP 桥接器/工具链/最近调用": {
+			"message": "mcp-bridge:menu-action",
+			"params": [
+				"call-history"
+			]
+		},
+		"MCP 桥接器/工具链/清空调用记录": {
+			"message": "mcp-bridge:menu-action",
+			"params": [
+				"clear-calls"
+			]
+		},
+		"MCP 桥接器/工具链/最近日志": {
+			"message": "mcp-bridge:menu-action",
+			"params": [
+				"logs"
+			]
+		},
+		"MCP 桥接器/工具链/复制日志": {
+			"message": "mcp-bridge:menu-action",
+			"params": [
+				"copy-logs"
+			]
+		},
+		"MCP 桥接器/工具链/清空日志": {
+			"message": "mcp-bridge:menu-action",
+			"params": [
+				"clear-logs"
+			]
+		},
+		"MCP 桥接器/设置/服务与连接": {
+			"message": "mcp-bridge:menu-action",
+			"params": [
+				"connection"
+			]
+		},
+		"MCP 桥接器/设置/服务端口": {
+			"message": "mcp-bridge:menu-action",
+			"params": [
+				"port"
+			]
+		},
+		"MCP 桥接器/设置/监听 Host": {
+			"message": "mcp-bridge:menu-action",
+			"params": [
+				"host"
+			]
+		},
+		"MCP 桥接器/设置/应用 Host": {
+			"message": "mcp-bridge:menu-action",
+			"params": [
+				"apply-host"
+			]
+		},
+		"MCP 桥接器/设置/切换自动启动": {
+			"message": "mcp-bridge:menu-action",
+			"params": [
+				"auto-start"
+			]
+		},
+		"MCP 桥接器/设置/工具开放范围": {
+			"message": "mcp-bridge:menu-action",
+			"params": [
+				"tools"
+			]
+		},
+		"MCP 桥接器/设置/选择工具预设": {
+			"message": "mcp-bridge:menu-action",
+			"params": [
+				"preset"
+			]
+		},
+		"MCP 桥接器/设置/预设名称": {
+			"message": "mcp-bridge:menu-action",
+			"params": [
+				"preset-name"
+			]
+		},
+		"MCP 桥接器/设置/工具预设模式": {
+			"message": "mcp-bridge:menu-action",
+			"params": [
+				"tool-mode"
+			]
+		},
+		"MCP 桥接器/设置/搜索工具": {
+			"message": "mcp-bridge:menu-action",
+			"params": [
+				"search-tools"
+			]
+		},
+		"MCP 桥接器/设置/切换隐藏兼容入口": {
+			"message": "mcp-bridge:menu-action",
+			"params": [
+				"hide-compat"
+			]
+		},
+		"MCP 桥接器/设置/重新读取预设": {
+			"message": "mcp-bridge:menu-action",
+			"params": [
+				"reload-presets"
+			]
+		},
+		"MCP 桥接器/设置/全部选择工具": {
+			"message": "mcp-bridge:menu-action",
+			"params": [
+				"select-tools"
+			]
+		},
+		"MCP 桥接器/设置/清除工具选择": {
+			"message": "mcp-bridge:menu-action",
+			"params": [
+				"clear-tools"
+			]
+		},
+		"MCP 桥接器/设置/使用预设默认": {
+			"message": "mcp-bridge:menu-action",
+			"params": [
+				"reset-tools"
+			]
+		},
+		"MCP 桥接器/设置/保存并启用预设": {
+			"message": "mcp-bridge:menu-action",
+			"params": [
+				"save-preset"
+			]
+		},
+		"MCP 桥接器/设置/复制全部预设": {
+			"message": "mcp-bridge:menu-action",
+			"params": [
+				"export-presets"
+			]
+		},
+		"MCP 桥接器/设置/从剪贴板导入预设": {
+			"message": "mcp-bridge:menu-action",
+			"params": [
+				"import-presets"
+			]
+		},
+		"MCP 桥接器/设置/截图设置": {
+			"message": "mcp-bridge:menu-action",
+			"params": [
+				"screenshots"
+			]
+		},
+		"MCP 桥接器/设置/截图最大宽度": {
+			"message": "mcp-bridge:menu-action",
+			"params": [
+				"screenshot-width"
+			]
+		},
+		"MCP 桥接器/设置/截图防抖节流": {
+			"message": "mcp-bridge:menu-action",
+			"params": [
+				"screenshot-throttle"
+			]
+		},
+		"MCP 桥接器/设置/保存性能配置": {
+			"message": "mcp-bridge:menu-action",
+			"params": [
+				"save-screenshots"
+			]
+		}
+	},
+	"panel": {
+		"main": "dist/panel/index.js",
+		"type": "dockable",
+		"title": "Cocos MCP",
+		"width": 400,
+		"height": 600
+	},
+	"profiles": {
+		"local": {
+			"auto-start": false,
+			"last-port": 8200,
+			"screenshot-max-width": 1280,
+			"screenshot-throttle": 1500
+		},
+		"project": {
+			"auto-start": false,
+			"last-port": 8200,
+			"screenshot-max-width": 1280,
+			"screenshot-throttle": 1500
+		}
+	},
+	"messages": {
+		"open-test-panel": {
+			"methods": [
+				"openTestPanel"
+			]
+		},
+		"query-spriteframe-uuid": {
+			"methods": [
+				"querySpriteFrameUuid"
+			]
+		},
+		"menu-action": {
+			"methods": [
+				"openMenuAction"
+			]
+		}
+	},
+	"devDependencies": {
+		"esbuild": "^0.25.0",
+		"typescript": "^5.7.0",
+		"@types/node": "^22.0.0",
+		"@types/ws": "^8.5.14"
+	}
+}
