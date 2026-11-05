@@ -4,7 +4,9 @@ const { loadSource, fakeClock } = require('./sourceHarness');
 
 test('删除回执早于磁盘删除时保持锁，文件和meta都消失后才成功', () => {
   const clock = fakeClock(); let exists = true, metadata = true, released = 0, reply = 0;
-  const { EditorWriteTools } = loadSource('tools/EditorWriteTools.ts', { ...clock, Editor: { assetdb: { urlToFspath: () => '/asset.png', exists: () => false, delete(urls, done) { done(null); } } } }, {
+  let registered = true;
+  const { EditorWriteTools } = loadSource('tools/EditorWriteTools.ts', { ...clock, Editor: { assetdb: { urlToFspath: () => '/asset.png', exists: () => registered,
+    getWatchState: () => 'watch-off', watchOFF() {}, watchON() {}, delete(urls, done) { registered = false; done(null); } } } }, {
     fs: { existsSync: file => file.endsWith('.meta') ? metadata : exists },
     '../core/CommandQueue': { CommandQueue: { trackEditorOperation: () => () => released++, blockPending() {} } },
   });

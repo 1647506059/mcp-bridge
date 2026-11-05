@@ -62,6 +62,15 @@ function validate(value, schema, location, allowRef = false) {
 }
 function validateConditional(tool, params) {
     var _a;
+    if (tool === "delete_assets" || tool === "manage_asset" && params.action === "delete" && params.paths !== undefined) {
+        if (params.path !== undefined)
+            throw new Error("批量删除 paths 与单个 path 不能同时提供");
+        for (const url of params.paths || []) {
+            (0, AssetUrl_1.validateAssetUrl)(url);
+            if ((0, AssetUrl_1.isAssetRoot)(url))
+                throw new Error("delete_assets 不允许删除资源根目录");
+        }
+    }
     if (tool === "manage_components") {
         if (params.action !== "get" && !params.nodeId)
             throw new Error("manage_components 写操作必须提供 nodeId");
@@ -79,6 +88,12 @@ function validateConditional(tool, params) {
     const requireFields = keys => { for (const key of keys)
         if (params[key] === undefined || params[key] === "")
             throw new Error(`${tool}.${key} 缺少操作必填参数`); };
+    if (tool === "manage_asset") {
+        if (params.paths !== undefined && params.action !== "delete")
+            throw new Error("paths 仅用于批量 delete");
+        if (!(params.action === "delete" && params.paths !== undefined))
+            requireFields(["path"]);
+    }
     if (tool === "manage_asset" && params.action === "move")
         requireFields(["targetPath"]);
     if (tool === "scene_management" && params.action === "duplicate")

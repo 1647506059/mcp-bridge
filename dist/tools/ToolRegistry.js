@@ -262,10 +262,11 @@ const getToolsList = () => {
                 properties: {
                     action: { type: "string", enum: ["create", "delete", "move", "get_info"], description: "操作类型" },
                     path: { type: "string", description: "资源路径，如 db://assets/textures；根目录 db://assets 仅允许 get_info，写操作会被拒绝" },
+                    paths: { type: "array", minItems: 1, maxItems: 500, items: { type: "string" }, description: "仅 delete 可用：批量资源 URL，与 path 二选一" },
                     targetPath: { type: "string", description: "目标路径 (用于 move 操作)" },
                     content: { type: "string", description: "资源内容 (用于 create 操作)" },
                 },
-                required: ["action", "path"],
+                required: ["action"],
             },
         },
         {

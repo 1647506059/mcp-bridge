@@ -1,36 +1,88 @@
 import { CommandQueue } from "../core/CommandQueue";
 import * as fs from "fs";
 import * as crypto from "crypto";
+import { isAssetRoot, validateAssetUrl } from "../utils/AssetUrl";
 
 declare const Editor: any;
 
 /** 保留编辑器原有写入路径，只在完成回执/读回后交还执行权。 */
 export class EditorWriteTools {
-    /** AssetDB 删除回调可能早于磁盘移入回收站，读回确认后再报告完成。 */
+    /** 单文件与批量入口共用监听屏障，避免后台快照重复提交已经删除的资源。 */
     static deleteAsset(url, callback) {
-        let file;
-        try { file = Editor.assetdb.urlToFspath(url); if (!file) throw new Error("资源路径无效"); }
+        EditorWriteTools.deleteAssets([url], callback);
+    }
+
+    static deleteAssets(requested: string[], callback: Function) {
+        const db = Editor.assetdb;
+        let urls: string[], files: string[], restoreWatch: boolean;
+        try {
+            if (!Array.isArray(requested) || !requested.length || requested.length > 500) throw new Error("删除路径数量必须为 1–500");
+            for (const url of requested) {
+                validateAssetUrl(url);
+                if (isAssetRoot(url)) throw new Error("不允许删除资源根目录");
+                if (!db.exists(url)) throw new Error("找不到资源: " + url);
+            }
+            // 合并重复项和已被父目录覆盖的子路径，原生删除只提交一次。
+            urls = [...new Set(requested)].filter(url => !requested.some(parent => parent !== url && url.startsWith(parent + "/")));
+            files = urls.map(url => {
+                const file = db.urlToFspath(url);
+                if (!file) throw new Error("资源路径无效: " + url);
+                return file;
+            });
+            if (typeof db.getWatchState !== "function" || typeof db.watchOFF !== "function" || typeof db.watchON !== "function") {
+                throw new Error("当前 AssetDB 不支持监听状态屏障，未执行删除");
+            }
+            const state = db.getWatchState();
+            if (!["watch-on", "watch-off", "watch-starting", "watch-stopping"].includes(state)) throw new Error("未知资源监听状态: " + state);
+            restoreWatch = state === "watch-on" || state === "watch-starting";
+        }
         catch (error) { callback(error); return; }
         const release = CommandQueue.trackEditorOperation();
-        let finished = false, reported = false, pollTimer;
+        let finished = false, reported = false, pollTimer, deletionError = null, deleteReplied = false;
         const finish = error => {
             if (finished) return;
             finished = true; clearTimeout(deadline); clearTimeout(pollTimer);
-            try { if (!reported) { reported = true; callback(error); } } finally { release(); }
+            try { if (!reported) { reported = true; callback(error, error ? undefined : { deleted: urls }); } } finally { release(); }
         };
         const deadline = setTimeout(() => {
             reported = true;
-            CommandQueue.blockPending("资源删除尚未确认，请等待磁盘完成或重载插件，不能直接重试");
-            callback("资源删除超时，磁盘完成状态未知: " + url);
-        }, 15000);
-        const poll = () => {
+            CommandQueue.blockPending("资源删除或监听恢复尚未确认，请等待完成或重载插件，不能直接重试");
+            callback("资源删除超时，数据库/磁盘/监听完成状态未知: " + urls.join(", "));
+        }, 30000);
+        const later = poll => { pollTimer = setTimeout(poll, reported ? 500 : 30); };
+        const pollRestored = () => {
             if (finished) return;
-            try { if (!Editor.assetdb.exists(url) && !fs.existsSync(file) && !fs.existsSync(file + ".meta")) return finish(null); }
+            try { if (!restoreWatch || db.getWatchState() === "watch-on") return finish(deletionError); }
             catch (error) { return finish(error); }
-            pollTimer = setTimeout(poll, reported ? 500 : 30);
+            later(pollRestored);
         };
-        try { Editor.assetdb.delete([url], error => { if (error) finish(error); else poll(); }); }
-        catch (error) { finish(error); }
+        const restore = error => {
+            deletionError = error;
+            try { if (restoreWatch) db.watchON(); pollRestored(); }
+            catch (failure) { finish(new Error(`${error ? String(error) + "; " : ""}资源监听恢复失败: ${failure.message || failure}`)); }
+        };
+        const pollDeleted = () => {
+            if (finished) return;
+            try {
+                if (urls.every((url, index) => !db.exists(url) && !fs.existsSync(files[index]) && !fs.existsSync(files[index] + ".meta"))) return restore(null);
+            } catch (error) { return restore(error); }
+            later(pollDeleted);
+        };
+        const pollPaused = () => {
+            if (finished) return;
+            try {
+                if (db.getWatchState() !== "watch-off") { later(pollPaused); return; }
+                // 排队等待监听停止期间超时，不得在迟到回执后继续发出删除。
+                if (reported) return restore(new Error("监听暂停超时，未执行删除"));
+                db.delete(urls, error => {
+                    if (deleteReplied) return;
+                    deleteReplied = true;
+                    if (error) restore(error); else pollDeleted();
+                });
+            } catch (error) { restore(error); }
+        };
+        try { if (restoreWatch) db.watchOFF(); pollPaused(); }
+        catch (error) { restore(error); }
     }
     static updatePrefab(args, callback) {
         const url = args.path, uuid = Editor.assetdb.urlToUuid(url);

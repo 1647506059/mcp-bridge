@@ -29,9 +29,15 @@ node scripts/release-sync.js apply sync-plan.json
 ### 工具开放范围与脚本执行
 
 - 设置面板的“设置与连接 → 工具开放范围”支持八种预设、分类勾选、搜索、兼容入口筛选和操作白名单。
-- 提供 141 个编辑器工具，stdio 另保留 2 个连接工具；旧工具继续可用，HTTP 和批处理同步执行开放范围检查。
+- 提供 142 个编辑器工具，stdio 另保留 2 个连接工具；旧工具继续可用，HTTP 和批处理同步执行开放范围检查。
 - 使用 `execute_javascript` 指定 `context: "editor" / "scene"`，支持 `return`、`await`、`run(env)` 和函数导出。
 - 脚本响应携带结果、日志和耗时；异步超时保持执行锁，真实完成前不接受后续写入。
+
+### 批量删除资源
+
+多个资源使用 `delete_assets({ paths: ["db://assets/example/a.png", "db://assets/example/b.png"] })`，不要循环调用原生 `Editor.assetdb.delete`。单个 `delete_asset` 和批量入口共用监听屏障：先等待后台监听停止，再一次提交 AssetDB，确认数据库记录、源文件及 `.meta` 都已删除，最后恢复原监听状态。目录会覆盖其子路径，重复路径只提交一次；整批预检失败时不执行部分删除。
+
+Creator 2.4 在后台保留文件快照，直接调用删除 API 后，切回编辑器可能按旧快照再次删除并报 `sync-changes: Failed to delete asset`。仅增加调用间隔不能解决这个问题。超时表示结果尚未确认，必须等待完成或重新核对状态，不能直接重放删除。删脚本前先清理并同步调用方引用，验证时同时检查 Creator 主进程日志和 MCP 日志。
 
 ## 功能特性
 

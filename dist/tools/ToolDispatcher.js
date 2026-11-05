@@ -829,6 +829,12 @@ export default class NewScript extends cc.Component {
                 AssetPatcher_1.AssetPatcher.safeCreateAsset(path, content || "", callback);
                 break;
             case "delete":
+                if (args.paths !== undefined) {
+                    if (path !== undefined)
+                        return callback("批量删除 paths 与单个 path 不能同时提供");
+                    EditorWriteTools_1.EditorWriteTools.deleteAssets(args.paths, callback);
+                    break;
+                }
                 if (!Editor.assetdb.exists(path)) {
                     return callback(`找不到资源: ${path}`);
                 }

@@ -55,7 +55,8 @@ for (const [target, category, entries] of [
     ["manage_undo", "undo", [["undo", "undo", false], ["redo", "redo", false], ["begin_undo_group", "begin_group", false], ["end_undo_group", "end_group", false], ["cancel_undo_group", "cancel_group", false]]],
 ])
     for (const [name, action, readOnly] of entries)
-        alias(name, target, action, category, readOnly, `${name}：${target} 的 ${action} 独立入口。`);
+        alias(name, target, action, category, readOnly, `${name}：${target} 的 ${action} 独立入口。`, {}, target === "manage_asset" ? ["path"] : undefined);
+alias("delete_assets", "manage_asset", "delete", "assets", false, "批量删除资源。暂停后台监听后一次提交 AssetDB，等待数据库、文件、meta 删除及原监听恢复；合并重复和父子路径。结果未知时禁止重试。", {}, ["paths"], { paths: { type: "array", minItems: 1, maxItems: 500, items: { type: "string" }, description: "db://assets/ 下的资源 URL，不允许资源根目录；不要再传单个 path" } });
 function toolAlias(name) {
     const item = aliases.find(item => item.name === name);
     if (!item)

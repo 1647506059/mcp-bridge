@@ -33,7 +33,7 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 var define_MCP_BRIDGE_BUILD_default;
 var init_define_MCP_BRIDGE_BUILD = __esm({
   "<define:__MCP_BRIDGE_BUILD__>"() {
-    define_MCP_BRIDGE_BUILD_default = { version: "1.7.0", buildId: "c3ea4582471ce11d67f4dcfa33a27ff549c3cd953a24b4d701e84bd8e59b32cb", builtAt: "2026-11-05T04:03:42.619Z" };
+    define_MCP_BRIDGE_BUILD_default = { version: "1.7.0", buildId: "cace32e492364744e663a268d6cb42f5f96540a2b83df1f3afa16c149bcc9152", builtAt: "2026-11-05T09:16:27.063Z" };
   }
 });
 
@@ -140,7 +140,18 @@ var init_ToolCapabilities = __esm({
       ["manage_texture", "materials", [["create_texture", "create", false], ["delete_texture", "delete", false], ["inspect_texture", "get_info", true], ["set_texture_properties", "update", false]]],
       ["manage_shader", "materials", [["create_shader", "create", false], ["delete_shader", "delete", false], ["read_shader", "read", true], ["write_shader", "write", false], ["inspect_shader", "get_info", true]]],
       ["manage_undo", "undo", [["undo", "undo", false], ["redo", "redo", false], ["begin_undo_group", "begin_group", false], ["end_undo_group", "end_group", false], ["cancel_undo_group", "cancel_group", false]]]
-    ]) for (const [name, action, readOnly] of entries) alias(name, target, action, category, readOnly, `${name}\uFF1A${target} \u7684 ${action} \u72EC\u7ACB\u5165\u53E3\u3002`);
+    ]) for (const [name, action, readOnly] of entries) alias(name, target, action, category, readOnly, `${name}\uFF1A${target} \u7684 ${action} \u72EC\u7ACB\u5165\u53E3\u3002`, {}, target === "manage_asset" ? ["path"] : void 0);
+    alias(
+      "delete_assets",
+      "manage_asset",
+      "delete",
+      "assets",
+      false,
+      "\u6279\u91CF\u5220\u9664\u8D44\u6E90\u3002\u6682\u505C\u540E\u53F0\u76D1\u542C\u540E\u4E00\u6B21\u63D0\u4EA4 AssetDB\uFF0C\u7B49\u5F85\u6570\u636E\u5E93\u3001\u6587\u4EF6\u3001meta \u5220\u9664\u53CA\u539F\u76D1\u542C\u6062\u590D\uFF1B\u5408\u5E76\u91CD\u590D\u548C\u7236\u5B50\u8DEF\u5F84\u3002\u7ED3\u679C\u672A\u77E5\u65F6\u7981\u6B62\u91CD\u8BD5\u3002",
+      {},
+      ["paths"],
+      { paths: { type: "array", minItems: 1, maxItems: 500, items: { type: "string" }, description: "db://assets/ \u4E0B\u7684\u8D44\u6E90 URL\uFF0C\u4E0D\u5141\u8BB8\u8D44\u6E90\u6839\u76EE\u5F55\uFF1B\u4E0D\u8981\u518D\u4F20\u5355\u4E2A path" } }
+    );
     READ_ONLY = /* @__PURE__ */ new Set(["get_selected_node", "get_scene_hierarchy", "find_gameobjects", "read_console", "validate_script", "run_script_diagnostics", "check_asset_ready", "validate_prefab", "search_project", "get_sha", "resolve_capture_coordinates", "inspect_asset_dependencies", "find_references", "get_project_info", "inspect_builder_targets", "get_active_instances"]);
     CATEGORY_NAMES = {
       project: ["get_project_info", "get_active_instances", "set_active_instance", "get_tool_catalog", "get_editor_state"],
@@ -2554,10 +2565,11 @@ var getToolsList = () => {
         properties: {
           action: { type: "string", enum: ["create", "delete", "move", "get_info"], description: "\u64CD\u4F5C\u7C7B\u578B" },
           path: { type: "string", description: "\u8D44\u6E90\u8DEF\u5F84\uFF0C\u5982 db://assets/textures\uFF1B\u6839\u76EE\u5F55 db://assets \u4EC5\u5141\u8BB8 get_info\uFF0C\u5199\u64CD\u4F5C\u4F1A\u88AB\u62D2\u7EDD" },
+          paths: { type: "array", minItems: 1, maxItems: 500, items: { type: "string" }, description: "\u4EC5 delete \u53EF\u7528\uFF1A\u6279\u91CF\u8D44\u6E90 URL\uFF0C\u4E0E path \u4E8C\u9009\u4E00" },
           targetPath: { type: "string", description: "\u76EE\u6807\u8DEF\u5F84 (\u7528\u4E8E move \u64CD\u4F5C)" },
           content: { type: "string", description: "\u8D44\u6E90\u5185\u5BB9 (\u7528\u4E8E create \u64CD\u4F5C)" }
         },
-        required: ["action", "path"]
+        required: ["action"]
       }
     },
     {
@@ -3129,6 +3141,13 @@ function validate(value, schema, location, allowRef = false) {
 }
 function validateConditional(tool, params) {
   var _a;
+  if (tool === "delete_assets" || tool === "manage_asset" && params.action === "delete" && params.paths !== void 0) {
+    if (params.path !== void 0) throw new Error("\u6279\u91CF\u5220\u9664 paths \u4E0E\u5355\u4E2A path \u4E0D\u80FD\u540C\u65F6\u63D0\u4F9B");
+    for (const url of params.paths || []) {
+      validateAssetUrl(url);
+      if (isAssetRoot(url)) throw new Error("delete_assets \u4E0D\u5141\u8BB8\u5220\u9664\u8D44\u6E90\u6839\u76EE\u5F55");
+    }
+  }
   if (tool === "manage_components") {
     if (params.action !== "get" && !params.nodeId) throw new Error("manage_components \u5199\u64CD\u4F5C\u5FC5\u987B\u63D0\u4F9B nodeId");
     if (params.action === "get" && !params.nodeId && !params.nodeIds) throw new Error("manage_components(get) \u5FC5\u987B\u63D0\u4F9B nodeId \u6216 nodeIds");
@@ -3140,6 +3159,10 @@ function validateConditional(tool, params) {
   const requireFields = (keys) => {
     for (const key of keys) if (params[key] === void 0 || params[key] === "") throw new Error(`${tool}.${key} \u7F3A\u5C11\u64CD\u4F5C\u5FC5\u586B\u53C2\u6570`);
   };
+  if (tool === "manage_asset") {
+    if (params.paths !== void 0 && params.action !== "delete") throw new Error("paths \u4EC5\u7528\u4E8E\u6279\u91CF delete");
+    if (!(params.action === "delete" && params.paths !== void 0)) requireFields(["path"]);
+  }
   if (tool === "manage_asset" && params.action === "move") requireFields(["targetPath"]);
   if (tool === "scene_management" && params.action === "duplicate") requireFields(["targetPath"]);
   if (tool === "prefab_management" && ["create", "update"].includes(params.action)) requireFields(["nodeId"]);
@@ -4806,19 +4829,40 @@ function applyValidatedEdits(source, edits) {
 init_define_MCP_BRIDGE_BUILD();
 var fs11 = __toESM(require("fs"));
 var crypto6 = __toESM(require("crypto"));
+init_AssetUrl();
 var EditorWriteTools = class _EditorWriteTools {
-  /** AssetDB 删除回调可能早于磁盘移入回收站，读回确认后再报告完成。 */
+  /** 单文件与批量入口共用监听屏障，避免后台快照重复提交已经删除的资源。 */
   static deleteAsset(url, callback) {
-    let file;
+    _EditorWriteTools.deleteAssets([url], callback);
+  }
+  static deleteAssets(requested, callback) {
+    const db = Editor.assetdb;
+    let urls, files, restoreWatch;
     try {
-      file = Editor.assetdb.urlToFspath(url);
-      if (!file) throw new Error("\u8D44\u6E90\u8DEF\u5F84\u65E0\u6548");
+      if (!Array.isArray(requested) || !requested.length || requested.length > 500) throw new Error("\u5220\u9664\u8DEF\u5F84\u6570\u91CF\u5FC5\u987B\u4E3A 1\u2013500");
+      for (const url of requested) {
+        validateAssetUrl(url);
+        if (isAssetRoot(url)) throw new Error("\u4E0D\u5141\u8BB8\u5220\u9664\u8D44\u6E90\u6839\u76EE\u5F55");
+        if (!db.exists(url)) throw new Error("\u627E\u4E0D\u5230\u8D44\u6E90: " + url);
+      }
+      urls = [...new Set(requested)].filter((url) => !requested.some((parent) => parent !== url && url.startsWith(parent + "/")));
+      files = urls.map((url) => {
+        const file = db.urlToFspath(url);
+        if (!file) throw new Error("\u8D44\u6E90\u8DEF\u5F84\u65E0\u6548: " + url);
+        return file;
+      });
+      if (typeof db.getWatchState !== "function" || typeof db.watchOFF !== "function" || typeof db.watchON !== "function") {
+        throw new Error("\u5F53\u524D AssetDB \u4E0D\u652F\u6301\u76D1\u542C\u72B6\u6001\u5C4F\u969C\uFF0C\u672A\u6267\u884C\u5220\u9664");
+      }
+      const state = db.getWatchState();
+      if (!["watch-on", "watch-off", "watch-starting", "watch-stopping"].includes(state)) throw new Error("\u672A\u77E5\u8D44\u6E90\u76D1\u542C\u72B6\u6001: " + state);
+      restoreWatch = state === "watch-on" || state === "watch-starting";
     } catch (error) {
       callback(error);
       return;
     }
     const release = CommandQueue.trackEditorOperation();
-    let finished = false, reported = false, pollTimer;
+    let finished = false, reported = false, pollTimer, deletionError = null, deleteReplied = false;
     const finish = (error) => {
       if (finished) return;
       finished = true;
@@ -4827,7 +4871,7 @@ var EditorWriteTools = class _EditorWriteTools {
       try {
         if (!reported) {
           reported = true;
-          callback(error);
+          callback(error, error ? void 0 : { deleted: urls });
         }
       } finally {
         release();
@@ -4835,25 +4879,62 @@ var EditorWriteTools = class _EditorWriteTools {
     };
     const deadline = setTimeout(() => {
       reported = true;
-      CommandQueue.blockPending("\u8D44\u6E90\u5220\u9664\u5C1A\u672A\u786E\u8BA4\uFF0C\u8BF7\u7B49\u5F85\u78C1\u76D8\u5B8C\u6210\u6216\u91CD\u8F7D\u63D2\u4EF6\uFF0C\u4E0D\u80FD\u76F4\u63A5\u91CD\u8BD5");
-      callback("\u8D44\u6E90\u5220\u9664\u8D85\u65F6\uFF0C\u78C1\u76D8\u5B8C\u6210\u72B6\u6001\u672A\u77E5: " + url);
-    }, 15e3);
-    const poll = () => {
+      CommandQueue.blockPending("\u8D44\u6E90\u5220\u9664\u6216\u76D1\u542C\u6062\u590D\u5C1A\u672A\u786E\u8BA4\uFF0C\u8BF7\u7B49\u5F85\u5B8C\u6210\u6216\u91CD\u8F7D\u63D2\u4EF6\uFF0C\u4E0D\u80FD\u76F4\u63A5\u91CD\u8BD5");
+      callback("\u8D44\u6E90\u5220\u9664\u8D85\u65F6\uFF0C\u6570\u636E\u5E93/\u78C1\u76D8/\u76D1\u542C\u5B8C\u6210\u72B6\u6001\u672A\u77E5: " + urls.join(", "));
+    }, 3e4);
+    const later = (poll) => {
+      pollTimer = setTimeout(poll, reported ? 500 : 30);
+    };
+    const pollRestored = () => {
       if (finished) return;
       try {
-        if (!Editor.assetdb.exists(url) && !fs11.existsSync(file) && !fs11.existsSync(file + ".meta")) return finish(null);
+        if (!restoreWatch || db.getWatchState() === "watch-on") return finish(deletionError);
       } catch (error) {
         return finish(error);
       }
-      pollTimer = setTimeout(poll, reported ? 500 : 30);
+      later(pollRestored);
+    };
+    const restore = (error) => {
+      deletionError = error;
+      try {
+        if (restoreWatch) db.watchON();
+        pollRestored();
+      } catch (failure) {
+        finish(new Error(`${error ? String(error) + "; " : ""}\u8D44\u6E90\u76D1\u542C\u6062\u590D\u5931\u8D25: ${failure.message || failure}`));
+      }
+    };
+    const pollDeleted = () => {
+      if (finished) return;
+      try {
+        if (urls.every((url, index) => !db.exists(url) && !fs11.existsSync(files[index]) && !fs11.existsSync(files[index] + ".meta"))) return restore(null);
+      } catch (error) {
+        return restore(error);
+      }
+      later(pollDeleted);
+    };
+    const pollPaused = () => {
+      if (finished) return;
+      try {
+        if (db.getWatchState() !== "watch-off") {
+          later(pollPaused);
+          return;
+        }
+        if (reported) return restore(new Error("\u76D1\u542C\u6682\u505C\u8D85\u65F6\uFF0C\u672A\u6267\u884C\u5220\u9664"));
+        db.delete(urls, (error) => {
+          if (deleteReplied) return;
+          deleteReplied = true;
+          if (error) restore(error);
+          else pollDeleted();
+        });
+      } catch (error) {
+        restore(error);
+      }
     };
     try {
-      Editor.assetdb.delete([url], (error) => {
-        if (error) finish(error);
-        else poll();
-      });
+      if (restoreWatch) db.watchOFF();
+      pollPaused();
     } catch (error) {
-      finish(error);
+      restore(error);
     }
   }
   static updatePrefab(args, callback) {
@@ -5922,6 +6003,11 @@ export default class NewScript extends cc.Component {
         AssetPatcher.safeCreateAsset(path12, content || "", callback);
         break;
       case "delete":
+        if (args.paths !== void 0) {
+          if (path12 !== void 0) return callback("\u6279\u91CF\u5220\u9664 paths \u4E0E\u5355\u4E2A path \u4E0D\u80FD\u540C\u65F6\u63D0\u4F9B");
+          EditorWriteTools.deleteAssets(args.paths, callback);
+          break;
+        }
         if (!Editor.assetdb.exists(path12)) {
           return callback(`\u627E\u4E0D\u5230\u8D44\u6E90: ${path12}`);
         }

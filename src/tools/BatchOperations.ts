@@ -41,6 +41,13 @@ export function validate(value, schema, location, allowRef = false) {
 }
 
 export function validateConditional(tool, params) {
+    if (tool === "delete_assets" || tool === "manage_asset" && params.action === "delete" && params.paths !== undefined) {
+        if (params.path !== undefined) throw new Error("批量删除 paths 与单个 path 不能同时提供");
+        for (const url of params.paths || []) {
+            validateAssetUrl(url);
+            if (isAssetRoot(url)) throw new Error("delete_assets 不允许删除资源根目录");
+        }
+    }
     if (tool === "manage_components") {
         if (params.action !== "get" && !params.nodeId) throw new Error("manage_components 写操作必须提供 nodeId");
         if (params.action === "get" && !params.nodeId && !params.nodeIds) throw new Error("manage_components(get) 必须提供 nodeId 或 nodeIds");
@@ -50,6 +57,10 @@ export function validateConditional(tool, params) {
         if (params.action !== "get" && params.nodeIds !== undefined) throw new Error("nodeIds 仅适用于 get");
     }
     const requireFields = keys => { for (const key of keys) if (params[key] === undefined || params[key] === "") throw new Error(`${tool}.${key} 缺少操作必填参数`); };
+    if (tool === "manage_asset") {
+        if (params.paths !== undefined && params.action !== "delete") throw new Error("paths 仅用于批量 delete");
+        if (!(params.action === "delete" && params.paths !== undefined)) requireFields(["path"]);
+    }
     if (tool === "manage_asset" && params.action === "move") requireFields(["targetPath"]);
     if (tool === "scene_management" && params.action === "duplicate") requireFields(["targetPath"]);
     if (tool === "prefab_management" && ["create", "update"].includes(params.action)) requireFields(["nodeId"]);

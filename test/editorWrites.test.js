@@ -124,3 +124,112 @@ test('预制体落盘超时不重放，保留锁直到迟到的真实完成且�
   assert.equal(h.replies.length, 1); assert.equal(h.pending(), 0);
   assert.equal(h.calls.filter(Array.isArray).length, 1);
 });
+
+
+function assetDeletionFixture(initial = 'watch-on', requested = ['db://assets/probe.txt']) {
+  const clock = fakeClock(), calls = [], replies = [], disk = new Set();
+  const registered = new Set(requested);
+  let state = initial, released = 0, blocked = '', deleteReply, autoReply = true, failed = null;
+  const file = url => '/project/assets/' + url.slice('db://assets/'.length);
+  for (const url of requested) { disk.add(file(url)); disk.add(file(url) + '.meta'); }
+  const db = {
+    exists: url => registered.has(url), urlToFspath: file,
+    getWatchState: () => state,
+    watchOFF() { calls.push('pause'); state = 'watch-stopping'; clock.setTimeout(() => state = 'watch-off', 40); },
+    watchON() { calls.push('resume'); state = 'watch-starting'; clock.setTimeout(() => state = 'watch-on', 20); },
+    delete(urls, callback) {
+      calls.push({ urls: [...urls], state });
+      deleteReply = error => {
+        if (!error) for (const url of [...registered]) if (urls.some(root => url === root || url.startsWith(root + '/'))) registered.delete(url);
+        callback(error);
+      };
+      if (autoReply) deleteReply(failed);
+    },
+  };
+  const { EditorWriteTools } = loadSource('tools/EditorWriteTools.ts', { ...clock, Editor: { assetdb: db } }, {
+    fs: { existsSync: name => disk.has(name) },
+    '../core/CommandQueue': { CommandQueue: { trackEditorOperation: () => () => released++, blockPending: reason => blocked = reason } },
+  });
+  return { clock, calls, replies, disk, file, db, requested, EditorWriteTools,
+    start: () => EditorWriteTools.deleteAssets(requested, (...args) => replies.push(args)),
+    single: () => EditorWriteTools.deleteAsset(requested[0], (...args) => replies.push(args)),
+    removed: () => disk.clear(), released: () => released, blocked: () => blocked,
+    holdReply: () => autoReply = false, reply: error => deleteReply(error), fail: error => failed = error,
+    state: value => state = value,
+  };
+}
+
+test('后台监听先暂停再删除，磁盘和meta完成后恢复快照，最后才释放执行锁', () => {
+  const f = assetDeletionFixture(); f.single();
+  assert.deepEqual(f.calls, ['pause']); // 旧实现会在 watch-on 时立即删除，留下过期快照。
+  f.clock.tick(60);
+  assert.deepEqual(f.calls[1], { urls: f.requested, state: 'watch-off' });
+  assert.equal(f.replies.length, 0); assert.equal(f.released(), 0);
+  f.disk.delete(f.file(f.requested[0])); f.clock.tick(30);
+  assert.equal(f.calls.includes('resume'), false); // .meta 尚未移出。
+  f.removed(); f.clock.tick(30);
+  assert.equal(f.calls.at(-1), 'resume'); assert.equal(f.replies.length, 0);
+  f.clock.tick(30);
+  assert.equal(f.replies.length, 1); assert.equal(f.replies[0][0], null); assert.equal(f.released(), 1);
+});
+
+test('批量路径去重并合并父子目录，只进行一次原生删除与监听切换', () => {
+  const f = assetDeletionFixture('watch-on', ['db://assets/folder/child.txt', 'db://assets/folder', 'db://assets/other.txt', 'db://assets/other.txt']);
+  f.start(); f.clock.tick(60); f.removed(); f.clock.tick(100);
+  const native = f.calls.filter(x => typeof x === 'object');
+  assert.equal(native.length, 1);
+  assert.deepEqual(native[0].urls, ['db://assets/folder', 'db://assets/other.txt']);
+  assert.equal(f.calls.filter(x => x === 'pause').length, 1);
+  assert.equal(f.calls.filter(x => x === 'resume').length, 1);
+});
+
+test('原监听已关闭时维持关闭，原生失败也恢复原先开启的监听', () => {
+  const off = assetDeletionFixture('watch-off'); off.start(); off.removed(); off.clock.tick(30);
+  assert.equal(off.calls.filter(x => typeof x === 'string').length, 0);
+  assert.equal(off.replies[0][0], null);
+  const on = assetDeletionFixture(); on.fail(new Error('delete failed')); on.start(); on.clock.tick(100);
+  assert.equal(on.replies.length, 1); assert.match(String(on.replies[0][0]), /delete failed/);
+  assert.equal(on.calls.at(-1), 'resume'); assert.equal(on.released(), 1);
+});
+
+test('暂停监听期间超时，迟到的暂停回执不能继续执行删除', () => {
+  const f = assetDeletionFixture(); f.db.watchOFF = () => f.state('watch-stopping'); f.start(); f.clock.tick(30000);
+  assert.equal(f.replies.length, 1); assert.ok(f.blocked()); assert.equal(f.released(), 0);
+  f.state('watch-off'); f.clock.tick(1000);
+  assert.equal(f.calls.filter(x => typeof x === 'object').length, 0);
+  assert.equal(f.replies.length, 1); assert.equal(f.released(), 1);
+});
+
+test('删除回执迟到时保留锁，真实完成和监听恢复后释放且不重复回复', () => {
+  const f = assetDeletionFixture(); f.holdReply(); f.start(); f.clock.tick(30000);
+  assert.equal(f.replies.length, 1); assert.equal(f.released(), 0);
+  f.removed(); f.reply(null); f.clock.tick(1000);
+  assert.equal(f.replies.length, 1); assert.equal(f.released(), 1); assert.equal(f.calls.at(-1), 'resume');
+});
+
+test('整个批次预检失败时不暂停监听，也不部分删除', () => {
+  for (const bad of ['db://assets', 'db://assets/../secret', 'db://assets/missing.txt']) {
+    const f = assetDeletionFixture('watch-on', ['db://assets/probe.txt']);
+    f.EditorWriteTools.deleteAssets([f.requested[0], bad], error => f.replies.push([error]));
+    assert.equal(f.calls.length, 0); assert.ok(f.replies[0][0]); assert.equal(f.released(), 0);
+  }
+});
+
+test('批量删除入口保持项目凭证、路径校验和数量边界', () => {
+  const { getToolsList } = loadSource('tools/ToolRegistry.ts');
+  const { validateToolCall } = loadSource('tools/ToolValidation.ts');
+  const { selectToolProfile } = loadSource('tools/ToolProfiles.ts');
+  const tools = getToolsList(), tool = tools.find(item => item.name === 'delete_assets');
+  assert.equal(tool.category, 'assets'); assert.equal(tool.annotations.readOnlyHint, false);
+  assert.ok(tool.inputSchema.properties.expected_context);
+  assert.equal(tool.aliasFor, 'manage_asset');
+  assert.ok(!selectToolProfile(tools, { MCP_BRIDGE_TOOL_ACTIONS: JSON.stringify({ manage_asset: ['get_info'] }) }).some(item => item.name === 'delete_assets'));
+  validateToolCall('delete_assets', { paths: ['db://assets/probe.txt'] }, tools);
+  validateToolCall('manage_asset', { action: 'delete', paths: ['db://assets/probe.txt'] }, tools);
+  assert.ok(tools.find(item => item.name === 'create_asset').inputSchema.required.includes('path'));
+  assert.throws(() => validateToolCall('manage_asset', { action: 'create' }, tools));
+  assert.throws(() => validateToolCall('manage_asset', { action: 'create', paths: ['db://assets/probe.txt'] }, tools));
+  for (const paths of [[], ['db://assets'], ['db://assets/../secret'], Array(501).fill('db://assets/probe.txt')]) {
+    assert.throws(() => validateToolCall('delete_assets', { paths }, tools));
+  }
+});
